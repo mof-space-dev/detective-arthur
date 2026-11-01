@@ -4,18 +4,24 @@ let scene2Img;
 let scene3Img;
 let scene4Img;
 
+// --- BGM用変数 ---
+let titleBgm;
+let arthurBgm; // ★ arthur に修正
+let endrollsBgm;         
+let tobeContinuedBgm;    
+let isAudioStarted = false;
+let hasEndrollsStarted = false; 
+
 // シーン管理
-// "TITLE" -> "SUBTITLE" -> "TRANSITION1" -> "SCENE1" -> ... -> "SCENE4" -> "TRANSITION_FIN" -> "FIN"
 let gameState = "TITLE";
 let stateStartTime = 0;
 
 // 各アニメーション・表示時間（ミリ秒）
-const TITLE_DURATION = 4000;    // タイトル画面 (4秒)
-const SUBTITLE_DURATION = 3500; // サブタイトル画面 (3.5秒)
-const TRANS_DURATION = 800;     // 横スライド遷移時間 (0.8秒)
-const SCENE_DURATION = 14000;   // 各シーン合計時間 (JP 7秒 + EN 7秒 = 14秒)
+const TITLE_DURATION = 8000;    
+const SUBTITLE_DURATION = 3500; 
+const TRANS_DURATION = 800;     
+const SCENE_DURATION = 14000;   
 
-// 言語切り替えタイミング（7秒）
 const LANG_CHANGE_TIME = 7000; 
 
 // --- 録画用変数 ---
@@ -23,9 +29,7 @@ let mediaRecorder;
 let recordedChunks = [];
 let isRecording = false;
 
-// --- モノローグ＆台詞テキスト定義 ---
-
-// シーン1（事務所の妄想）
+// --- テキスト定義 ---
 const scene1TextJP = 
   "私はアーサー。世間では『名探偵アーサー』と呼ばれている……\n" +
   "と言いたいところだが、それは私の妄想で、現実は冴えない探偵事務所の所長だ。\n\n" +
@@ -39,13 +43,14 @@ const scene1TextEN =
   "My recent cases consist entirely of infidelity checks and searching for hidden bugs. At this rate, paying this month's rent is out of the question.\n\n" +
   "Ah... if only someone would bring me a truly grave, chilling, and mysterious case...";
 
-// シーン2（シャード前）
+// ★ 調整した改行を反映
 const scene2TextJP = 
-  "……考えに耽りながら夜の街を彷徨ううち、いつの間にかこの巨大なガラスの針の真下に辿り着いていたようだ。\n\n" +
+  "……考えに耽りながら夜の街を彷徨ううち……\n" +
+  "いつの間にかこの巨大なガラスの針の真下に辿り着いていたようだ。\n" +
   "ふっ……これが現代のバベルの塔か。\n" +
   "しかし……人はここへ登って、一体何になろうというのだ？\n" +
   "眼下に広がる景色を眺めて、何が得られるというのだ？\n\n" +
-  "欲望と金が渦巻くこの街で、真実を知る者は……私一人というわけだ。";
+  "欲望と金が渦巻くこの街で、真実を知る者は……私一人というわけだ。\n";
 
 const scene2TextEN = 
   "...Lost in thought as I wandered the night streets, I found myself standing directly beneath this giant needle of glass.\n\n" +
@@ -53,7 +58,6 @@ const scene2TextEN =
   "But why do people climb it? What do they hope to see looking down upon this city?\n\n" +
   "In this place, dripping with greed and money... I alone hold the truth.";
 
-// シーン3（勘違いスポットライト）
 const scene3TextJP = 
   "……おっと？夜の静寂（しじま）を切り裂き、私を照らし出す幾重ものスポットライト……。\n" +
   "どうしたというのだろうか。何か事件が起きたのか？\n" +
@@ -70,7 +74,6 @@ const scene3TextEN =
   "It seems the city is already crying out for my presence.\n" +
   "Deep within my heart, I feel a surge of intense excitement.";
 
-// シーン4（ドタバタ連行・オチ）
 const scene4TextJP = 
   "「おい、何やってんだこんな時間に！\n" +
   "そもそもここ立ち入り禁止ですよ！喫煙ダメ！なんだその格好……ホームズ気取りか？\n" +
@@ -92,6 +95,12 @@ function preload() {
   scene2Img = loadImage('scene2.png');
   scene3Img = loadImage('scene3.png');
   scene4Img = loadImage('scene4.png');
+
+  soundFormats('wav', 'mp3');
+  titleBgm = loadSound('title.wav');
+  arthurBgm = loadSound('arthur.wav'); // ★ arthur.wav に変更
+  endrollsBgm = loadSound('endrolls.wav');         
+  tobeContinuedBgm = loadSound('tobe_continued.wav'); 
 }
 
 function setup() {
@@ -106,9 +115,13 @@ function draw() {
   drawGameContent();
   pop();
 
-  drawGlassOverlay(); // レトロPC/CRT風フィルター処理
-  updateState();       // シーン進行制御
-  drawRecordingIndicator(); // 録画中インジケーター表示
+  drawGlassOverlay(); 
+  updateState();      
+  drawRecordingIndicator(); 
+  
+  if (gameState === "FIN") {
+    drawTitleButton();
+  }
 }
 
 function drawGameContent() {
@@ -116,233 +129,292 @@ function drawGameContent() {
 
   if (gameState === "TITLE") {
     image(titleImg, 0, 0, width, height);
-
+    
+    if (!isAudioStarted) {
+      push();
+      fill(255, 255, 255, 180);
+      noStroke();
+      textAlign(CENTER, BOTTOM);
+      textSize(14);
+      text("- Click anywhere to start -", width / 2, height - 30);
+      pop();
+    }
   } else if (gameState === "SUBTITLE") {
     drawSubtitleScreen();
-
   } else if (gameState === "TRANSITION1") {
     let progress = constrain(elapsed / TRANS_DURATION, 0, 1);
     let ease = progress * progress * (3 - 2 * progress);
-
     push();
     translate(-width * ease, 0);
     drawSubtitleScreen();
     pop();
-
     push();
     translate(width * (1 - ease), 0);
-    drawSplitScene(scene1Img, scene1TextJP, scene1TextEN);
+    drawSplitScene(scene1Img, scene1TextJP, scene1TextEN, 0);
     pop();
-
   } else if (gameState === "SCENE1") {
-    drawSplitScene(scene1Img, scene1TextJP, scene1TextEN);
-
+    drawSplitScene(scene1Img, scene1TextJP, scene1TextEN, elapsed);
   } else if (gameState === "TRANSITION2") {
     let progress = constrain(elapsed / TRANS_DURATION, 0, 1);
     let ease = progress * progress * (3 - 2 * progress);
-
     push();
     translate(-width * ease, 0);
-    drawSplitScene(scene1Img, scene1TextJP, scene1TextEN);
+    drawSplitScene(scene1Img, scene1TextJP, scene1TextEN, SCENE_DURATION);
     pop();
-
     push();
     translate(width * (1 - ease), 0);
-    drawSplitScene(scene2Img, scene2TextJP, scene2TextEN);
+    drawSplitScene(scene2Img, scene2TextJP, scene2TextEN, 0);
     pop();
-
   } else if (gameState === "SCENE2") {
-    drawSplitScene(scene2Img, scene2TextJP, scene2TextEN);
-
+    drawSplitScene(scene2Img, scene2TextJP, scene2TextEN, elapsed);
   } else if (gameState === "TRANSITION3") {
     let progress = constrain(elapsed / TRANS_DURATION, 0, 1);
     let ease = progress * progress * (3 - 2 * progress);
-
     push();
     translate(-width * ease, 0);
-    drawSplitScene(scene2Img, scene2TextJP, scene2TextEN);
+    drawSplitScene(scene2Img, scene2TextJP, scene2TextEN, SCENE_DURATION);
     pop();
-
     push();
     translate(width * (1 - ease), 0);
-    drawSplitScene(scene3Img, scene3TextJP, scene3TextEN);
+    drawSplitScene(scene3Img, scene3TextJP, scene3TextEN, 0);
     pop();
-
   } else if (gameState === "SCENE3") {
-    drawSplitScene(scene3Img, scene3TextJP, scene3TextEN);
-
+    drawSplitScene(scene3Img, scene3TextJP, scene3TextEN, elapsed);
   } else if (gameState === "TRANSITION4") {
     let progress = constrain(elapsed / TRANS_DURATION, 0, 1);
     let ease = progress * progress * (3 - 2 * progress);
-
     push();
     translate(-width * ease, 0);
-    drawSplitScene(scene3Img, scene3TextJP, scene3TextEN);
+    drawSplitScene(scene3Img, scene3TextJP, scene3TextEN, SCENE_DURATION);
     pop();
-
     push();
     translate(width * (1 - ease), 0);
-    drawSplitScene(scene4Img, scene4TextJP, scene4TextEN);
+    drawSplitScene(scene4Img, scene4TextJP, scene4TextEN, 0);
     pop();
-
   } else if (gameState === "SCENE4") {
-    drawSplitScene(scene4Img, scene4TextJP, scene4TextEN);
+    drawSplitScene(scene4Img, scene4TextJP, scene4TextEN, elapsed);
+
+    if (elapsed >= 500 && !hasEndrollsStarted && endrollsBgm && isAudioStarted) {
+      endrollsBgm.play();
+      hasEndrollsStarted = true;
+    }
 
   } else if (gameState === "TRANSITION_FIN") {
-    // Scene 4 -> エンド画面へのスライド遷移
     let progress = constrain(elapsed / TRANS_DURATION, 0, 1);
     let ease = progress * progress * (3 - 2 * progress);
-
     push();
     translate(-width * ease, 0);
-    drawSplitScene(scene4Img, scene4TextJP, scene4TextEN);
+    drawSplitScene(scene4Img, scene4TextJP, scene4TextEN, SCENE_DURATION);
     pop();
-
     push();
     translate(width * (1 - ease), 0);
     drawFinScreen();
     pop();
-
   } else if (gameState === "FIN") {
     drawFinScreen();
   }
 }
 
-// サブタイトル画面の描画関数
 function drawSubtitleScreen() {
   fill(0);
   rect(0, 0, width, height);
   fill(255);
   textAlign(CENTER, CENTER);
-  
   textSize(28);
   text("第１話「タワーの下で…」", width / 2, height / 2 - 20);
-  
   fill(180);
   textSize(18);
   text("— Under the Tower... —", width / 2, height / 2 + 25);
 }
 
-// 画面上下分割描画用関数（上：画像 / 下：モノローグテキスト）
-function drawSplitScene(img, textJP, textEN) {
+function drawSplitScene(img, textJP, textEN, customElapsed) {
   let imgRatio = 0.62;
   let imgH = height * imgRatio;
   let textH = height * (1 - imgRatio);
 
-  // 上部：画像表示
   image(img, 0, 0, width, imgH);
 
-  // 下部：黒のテキスト枠エリア
   fill(0);
   noStroke();
   rect(0, imgH, width, textH);
 
-  // 境界線（PC-88風の白ライン）
   stroke(255);
   strokeWeight(2);
   line(0, imgH, width, imgH);
 
-  // 時間判定による日本語 / 英語の自動切替 (7秒)
-  let sceneElapsed = millis() - stateStartTime;
-  let showEnglish = sceneElapsed >= LANG_CHANGE_TIME;
+  let showEnglish = customElapsed >= LANG_CHANGE_TIME;
 
-  let pad = 24;
+  let baseScale = min(width / 700, height / 600);
+  baseScale = constrain(baseScale, 0.4, 1.2); 
+  let pad = constrain(width * 0.02, 10, 20);
+
   noStroke();
   textAlign(LEFT, TOP);
 
   if (!showEnglish) {
-    // 日本語表示 (0〜7秒)
     fill(255);
-    textSize(18);
+    let jpSize = constrain(14 * baseScale, 10, 16);
+    textSize(jpSize);
     text(textJP, pad, imgH + pad, width - (pad * 2), textH - (pad * 2));
     
     fill(120);
-    textSize(12);
+    let tagSize = constrain(11 * baseScale, 9, 13);
+    textSize(tagSize);
     textAlign(RIGHT, BOTTOM);
-    text("[ JP ]", width - pad, height - 12);
+    text("[ JP ]", width - pad, height - 6);
   } else {
-    // 英語表示 (7秒〜14秒)
     fill(220);
-    textSize(16);
+    let enSize = constrain(13 * baseScale, 9, 15);
+    textSize(enSize);
     text(textEN, pad, imgH + pad, width - (pad * 2), textH - (pad * 2));
 
     fill(120);
-    textSize(12);
+    let tagSize = constrain(11 * baseScale, 9, 13);
+    textSize(tagSize);
     textAlign(RIGHT, BOTTOM);
-    text("[ EN ]", width - pad, height - 12);
+    text("[ EN ]", width - pad, height - 6);
   }
 }
 
-// エンド画面 (To Be Continued...) 描画
 function drawFinScreen() {
   fill(0);
   rect(0, 0, width, height);
+
+  textSize(15);
+  textAlign(CENTER, CENTER);
   
+  let centerX = width / 2;
+  let yPos = height / 2 - 45;
+
+  push();
+  let words = ["— ", "Thank ", "you ", "for ", "watching", " —"];
+  let colors = [
+    color(160, 160, 160), 
+    color(255, 170, 190), 
+    color(255, 230, 120), 
+    color(180, 180, 180), 
+    color(255, 170, 190), 
+    color(160, 160, 160)  
+  ];
+
+  let totalW = 0;
+  for (let i = 0; i < words.length; i++) {
+    totalW += textWidth(words[i]);
+  }
+  
+  let startX = centerX - totalW / 2;
+  let currentX = startX;
+
+  for (let i = 0; i < words.length; i++) {
+    fill(colors[i]);
+    textAlign(LEFT, CENTER);
+    text(words[i], currentX, yPos);
+    currentX += textWidth(words[i]);
+  }
+  pop();
+
   fill(255);
   textSize(32);
   textAlign(CENTER, CENTER);
-  text("To Be Continued...", width / 2, height / 2);
+  text("To Be Continued...", width / 2, height / 2 + 10);
 }
 
-// 状態（シーン）の自動進行制御
-function updateState() {
-  let elapsed = millis() - stateStartTime;
+function setGameState(newState) {
+  gameState = newState;
+  stateStartTime = millis();
 
-  if (gameState === "TITLE" && elapsed > TITLE_DURATION) {
-    gameState = "SUBTITLE";
-    stateStartTime = millis();
-  } else if (gameState === "SUBTITLE" && elapsed > SUBTITLE_DURATION) {
-    gameState = "TRANSITION1";
-    stateStartTime = millis();
-  } else if (gameState === "TRANSITION1" && elapsed > TRANS_DURATION) {
-    gameState = "SCENE1";
-    stateStartTime = millis();
-  } else if (gameState === "SCENE1" && elapsed > SCENE_DURATION) {
-    gameState = "TRANSITION2";
-    stateStartTime = millis();
-  } else if (gameState === "TRANSITION2" && elapsed > TRANS_DURATION) {
-    gameState = "SCENE2";
-    stateStartTime = millis();
-  } else if (gameState === "SCENE2" && elapsed > SCENE_DURATION) {
-    gameState = "TRANSITION3";
-    stateStartTime = millis();
-  } else if (gameState === "TRANSITION3" && elapsed > TRANS_DURATION) {
-    gameState = "SCENE3";
-    stateStartTime = millis();
-  } else if (gameState === "SCENE3" && elapsed > SCENE_DURATION) {
-    gameState = "TRANSITION4";
-    stateStartTime = millis();
-  } else if (gameState === "TRANSITION4" && elapsed > TRANS_DURATION) {
-    gameState = "SCENE4";
-    stateStartTime = millis();
-  } else if (gameState === "SCENE4" && elapsed > SCENE_DURATION) {
-    // Scene 4 (14秒) 終了後、エンド表示へスライド移動
-    gameState = "TRANSITION_FIN";
-    stateStartTime = millis();
-  } else if (gameState === "TRANSITION_FIN" && elapsed > TRANS_DURATION) {
-    gameState = "FIN";
-    stateStartTime = millis();
+  if (gameState === "SUBTITLE") {
+    if (titleBgm && titleBgm.isPlaying()) {
+      titleBgm.stop();
+    }
+  }
+
+  // ★ arthurBgm の再生
+  if (gameState === "SCENE1") {
+    if (arthurBgm && !arthurBgm.isPlaying() && isAudioStarted) {
+      arthurBgm.loop();
+    }
+  }
+  
+  // ★ arthurBgm の停止
+  if (gameState === "TRANSITION4") {
+    if (arthurBgm && arthurBgm.isPlaying()) {
+      arthurBgm.stop();
+    }
+    hasEndrollsStarted = false;
+  }
+
+  if (gameState === "TRANSITION_FIN") {
+    if (endrollsBgm && endrollsBgm.isPlaying()) {
+      endrollsBgm.fadeOut(1.5); 
+      setTimeout(() => {
+        if (endrollsBgm.isPlaying()) {
+          endrollsBgm.stop();
+        }
+      }, 1500);
+    }
+
+    if (tobeContinuedBgm && !tobeContinuedBgm.isPlaying() && isAudioStarted) {
+      tobeContinuedBgm.setLoop(true); 
+      tobeContinuedBgm.play();
+    }
+  }
+
+  if (gameState === "FIN") {
+    if (endrollsBgm && endrollsBgm.isPlaying()) {
+      endrollsBgm.stop();
+    }
   }
 }
 
-// CRT/走査線エフェクト
+function updateState() {
+  let elapsed = millis() - stateStartTime;
+
+  if (gameState === "TITLE") {
+    if (!isAudioStarted) {
+      stateStartTime = millis(); 
+      return;
+    }
+    if (elapsed > TITLE_DURATION) {
+      setGameState("SUBTITLE");
+    }
+  } else if (gameState === "SUBTITLE" && elapsed > SUBTITLE_DURATION) {
+    setGameState("TRANSITION1");
+  } else if (gameState === "TRANSITION1" && elapsed > TRANS_DURATION) {
+    setGameState("SCENE1");
+  } else if (gameState === "SCENE1" && elapsed > SCENE_DURATION) {
+    setGameState("TRANSITION2");
+  } else if (gameState === "TRANSITION2" && elapsed > TRANS_DURATION) {
+    setGameState("SCENE2");
+  } else if (gameState === "SCENE2" && elapsed > SCENE_DURATION) {
+    setGameState("TRANSITION3");
+  } else if (gameState === "TRANSITION3" && elapsed > TRANS_DURATION) {
+    setGameState("SCENE3");
+  } else if (gameState === "SCENE3" && elapsed > SCENE_DURATION) {
+    setGameState("TRANSITION4");
+  } else if (gameState === "TRANSITION4" && elapsed > TRANS_DURATION) {
+    setGameState("SCENE4");
+  } else if (gameState === "SCENE4" && elapsed > SCENE_DURATION) {
+    setGameState("TRANSITION_FIN");
+  } else if (gameState === "TRANSITION_FIN" && elapsed > TRANS_DURATION) {
+    setGameState("FIN"); 
+  }
+}
+
 function drawGlassOverlay() {
   if (random(100) < 8) {
     fill(0, random(10, 25));
     rect(0, 0, width, height);
   }
-
   stroke(0, 60);
   strokeWeight(1);
   for (let y = 0; y < height; y += 3) {
     line(0, y, width, y);
   }
-
   stroke(255, random(10, 25));
   for (let i = 0; i < 500; i++) {
     point(random(width), random(height));
   }
-
   if (random(100) < 12) {
     let lineY = random(height);
     stroke(255, random(30, 80));
@@ -350,9 +422,57 @@ function drawGlassOverlay() {
   }
 }
 
-// --- 録画機能ロジック ---
+function drawTitleButton() {
+  let btnW = 140;
+  let btnH = 40;
+  let btnX = width / 2 - btnW / 2;
+  let btnY = height / 2 + 80; 
+
+  push();
+  stroke(255, 180);
+  strokeWeight(2);
+  fill(0, 200);
+  rect(btnX, btnY, btnW, btnH, 6);
+
+  noStroke();
+  fill(255);
+  textSize(14);
+  textAlign(CENTER, CENTER);
+  text("TITLEへ戻る", btnX + btnW / 2, btnY + btnH / 2);
+  pop();
+}
+
+function mousePressed() {
+  userStartAudio();
+
+  if (gameState === "FIN") {
+    let btnW = 140;
+    let btnH = 40;
+    let btnX = width / 2 - btnW / 2;
+    let btnY = height / 2 + 80;
+
+    if (mouseX >= btnX && mouseX <= btnX + btnW && mouseY >= btnY && mouseY <= btnY + btnH) {
+      if (tobeContinuedBgm && tobeContinuedBgm.isPlaying()) {
+        tobeContinuedBgm.stop();
+      }
+
+      isAudioStarted = false;
+      hasEndrollsStarted = false;
+      setGameState("TITLE");
+      return;
+    }
+  }
+
+  if (!isAudioStarted && gameState === "TITLE") {
+    isAudioStarted = true;
+    stateStartTime = millis(); 
+    if (titleBgm && titleBgm.isLoaded()) {
+      titleBgm.play();
+    }
+  }
+}
+
 function keyPressed() {
-  // 「R」キーで録画トグル
   if (key === 'r' || key === 'R') {
     if (!isRecording) {
       startRecording();
@@ -364,7 +484,7 @@ function keyPressed() {
 
 function startRecording() {
   recordedChunks = [];
-  let stream = document.querySelector('canvas').captureStream(30); // 30fps
+  let stream = document.querySelector('canvas').captureStream(30);
   mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
 
   mediaRecorder.ondataavailable = function (event) {
@@ -380,23 +500,19 @@ function startRecording() {
     a.href = url;
     a.download = 'detective_arthur_ep1.webm';
     a.click();
-    URL.revokeObjectURL(url);
   };
 
   mediaRecorder.start();
   isRecording = true;
-  console.log("録画を開始しました...");
 }
 
 function stopRecording() {
   if (mediaRecorder && isRecording) {
     mediaRecorder.stop();
     isRecording = false;
-    console.log("録画を停止し、ダウンロードします。");
   }
 }
 
-// 録画中マーク表示（画面左上）
 function drawRecordingIndicator() {
   if (isRecording) {
     push();
