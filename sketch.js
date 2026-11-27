@@ -100,7 +100,7 @@ function preload() {
   scene4Img = loadImage('scene4.png');
 
   soundFormats('wav', 'mp3');
-  titleBgm = loadSound('title.wav');
+  titleBgm = loadSound('title1.wav');
   arthurBgm = loadSound('arthur.wav'); // ★ arthur.wav に変更
   endrollsBgm = loadSound('endrolls.wav');         
   tobeContinuedBgm = loadSound('tobe_continued.wav'); 
